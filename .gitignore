@@ -218,5 +218,5 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Ignore locally created charm build artifacts
-jaime.charm
+*.charm
 pkg/

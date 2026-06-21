@@ -14,6 +14,26 @@ The phase-1 MVP focuses on **Observe mode**:
 - optionally call an AI provider such as Gemini to generate a Markdown report
 - do **not** perform remediation in phase-1 unless explicitly implemented later
 
+## Quickstart
+
+Setup environment
+
+```bash
+sudo snap install charmcraft --classic
+sudo snap install lxd
+sudo usermod -aG lxd $USER
+newgrp lxd
+```
+
+Pack the charm:
+
+```bash
+charmcraft pack
+juju deploy postgresql --channel 16/stable --to 0
+juju deploy ./jaime_ubuntu-24.04-amd64.charm
+juju relate postgresql jaime
+```
+
 ## Scope
 
 The eventual goal is that Jaime attempts to fix infrastructure and environment issues, that are causing the principa charm to enter into an `error` state. Jaime shouldn't touch any of the principal charm's application code. Phase-1 is intentionally conservative. Jaime should first become a reliable observer and reporter before it becomes an automated remediation engine.

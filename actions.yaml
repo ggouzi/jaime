@@ -1,11 +1,9 @@
-version: 1
-actions:
-  diagnose:
-    description: "Collect basic information about the related principal charm (read-only)."
-    params: {}
-  collect-context:
-    description: "Write a bounded context bundle to disk and return its path."
-    params: {}
-  generate-report:
-    description: "Generate a Markdown incident report from the last collected context."
-    params: {}
+diagnose:
+  description: "Collect basic information about the related principal charm (read-only)."
+  params: {}
+collect-context:
+  description: "Write a bounded context bundle to disk and return its path."
+  params: {}
+generate-report:
+  description: "Generate a Markdown incident report from the last collected context."
+  params: {}
