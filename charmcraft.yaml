@@ -1,0 +1,10 @@
+name: jaime
+summary: Jaime — Juju AI Medic Engine
+description: |
+  Jaime is a Juju machine subordinate charm that observes related principal units,
+  collects bounded diagnostic context, and writes structured incident reports.
+version: 0.0.1
+
+# Minimal charmcraft file for a Python operator charm skeleton. This file is
+# intentionally small so it is easy to iterate on during early development.
+type: charm

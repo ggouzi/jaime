@@ -1,0 +1,49 @@
+options:
+  mode:
+    type: string
+    description: "Operating mode. For phase-1 only 'observe' is supported."
+    default: observe
+  provider:
+    type: string
+    description: "AI provider to use for optional report generation. Use 'none' for no provider."
+    default: none
+  model:
+    type: string
+    description: "AI model name used by the selected provider (optional)."
+    default: ""
+  api-token:
+    type: string
+    description: "Reference to Juju secret containing the provider API token. Must not be logged."
+    default: ""
+  watch-statuses:
+    type: string
+    description: "Comma-separated principal unit statuses that should open an incident."
+    default: "error,blocked"
+  failure-timeout-minutes:
+    type: int
+    description: "How long a watched status must persist before a report is generated."
+    default: 5
+  cooldown-minutes:
+    type: int
+    description: "Minimum time before generating another report for the same unresolved incident."
+    default: 30
+  log-window-minutes:
+    type: int
+    description: "How far back Jaime should collect recent logs (minutes)."
+    default: 30
+  max-context-lines:
+    type: int
+    description: "Maximum number of log/context lines to include in a report context bundle."
+    default: 500
+  report-dir:
+    type: string
+    description: "Directory where Markdown or JSON report artifacts are written."
+    default: /var/log/jaime/reports
+  audit-log-path:
+    type: string
+    description: "Path to the structured JSONL audit log."
+    default: /var/log/jaime/events.jsonl
+  ai-report-enabled:
+    type: boolean
+    description: "Whether AI-assisted report generation is enabled."
+    default: false

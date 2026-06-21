@@ -23,6 +23,23 @@ Juju model
         └── AI provider adapter, optional
 ```
 
+## Technology Choices
+
+### Juju Charm Framework
+
+Jaime is implemented as a Juju machine subordinate charm using the Ops Framework.
+
+The Ops Framework is responsible for:
+
+- charm lifecycle events
+- relation handling
+- action handling
+- configuration management
+- secret integration
+- status updates
+
+Business logic should remain outside the charm event handlers where possible to keep functionality testable without a running Juju model.
+
 ## Core loop
 
 Jaime uses Juju charm events, especially `update-status`, to periodically inspect the related principal unit.
