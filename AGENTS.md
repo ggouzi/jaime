@@ -184,8 +184,8 @@ Agents must follow these rules:
 .
 ├── README.md
 ├── AGENTS.md
-├── architecture.md
-├── tasks.md
+├── ARCHITRECTURE.md
+├── TASKS.md
 ├── charmcraft.yaml
 ├── metadata.yaml
 ├── config.yaml
@@ -210,7 +210,7 @@ Agents must follow these rules:
 
 ## Agents
 
-### plan
+### project
 
 Use this agent for product decomposition, task ordering, scope control, and design review.
 
@@ -218,7 +218,7 @@ Responsibilities:
 
 - keep the MVP small
 - prevent premature remediation features
-- maintain `tasks.md`
+- maintain `TASKS.md`
 - update what is changed in `CHANGELOG.md`
 - clarify acceptance criteria
 - split work into small implementation steps
