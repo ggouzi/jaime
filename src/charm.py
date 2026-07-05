@@ -1,48 +1,43 @@
 #!/usr/bin/env python3
-"""
-Minimal Jaime charm skeleton.
+"""Jaime charm — diagnostics plan generation on relation-joined."""
 
-This file implements a light-weight operator framework charm that registers basic
-event handlers and dummy actions. The handlers intentionally do not implement
-the production logic — they provide a safe scaffold to iterate on.
-"""
-from ops.charm import CharmBase
-from ops.main import main
-from ops.model import ActiveStatus, MaintenanceStatus
+import json
 import logging
 import datetime
+
+from ops.charm import CharmBase
+from ops.main import main
+from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus
+
+from jaime.diagnostics import (
+    validate_diagnostics,
+    build_prompt,
+    write_diagnostics_file,
+    make_empty_plan,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class JaimeCharm(CharmBase):
-    """A minimal charm skeleton for Jaime.
-
-    This charm provides the basic hooks and actions so the charm can be built,
-    deployed, and related. Core logic (incident lifecycle, collectors, reports)
-    will be implemented in later tasks.
-    """
+    _diagnostics_dir = "/var/lib/jaime"
+    _diagnostics_path = f"{_diagnostics_dir}/diagnostics.json"
 
     def __init__(self, *args):
         super().__init__(*args)
 
-        # Observe basic framework and relation events
         self.framework.observe(self.on.update_status, self._on_update_status)
-        # Relation endpoint name comes from metadata.yaml as 'principal'
         self.framework.observe(self.on.principal_relation_changed, self._on_principal_changed)
         self.framework.observe(self.on.principal_relation_joined, self._on_principal_joined)
         self.framework.observe(self.on.principal_relation_broken, self._on_principal_broken)
 
-        # Actions
         self.framework.observe(self.on.diagnose_action, self._on_action_diagnose)
         self.framework.observe(self.on.collect_context_action, self._on_action_collect_context)
         self.framework.observe(self.on.generate_report_action, self._on_action_generate_report)
 
-        # Start in maintenance until the charm has run its first update-status
         self.unit.status = MaintenanceStatus("initialising")
 
     def _on_update_status(self, event):
-        # Minimal status handling: if related principal exists, become Active.
         try:
             relations = list(self.model.relations.get("principal", []))
         except Exception:
@@ -51,24 +46,113 @@ class JaimeCharm(CharmBase):
         if relations:
             self.unit.status = ActiveStatus("Ready")
         else:
-            # If not related yet, remain in maintenance so operators can see the state
             self.unit.status = MaintenanceStatus("waiting for principal relation")
 
-    # Relation handlers are intentionally minimal and non-mutating;
-    # they exist so the charm can be related without errors.
     def _on_principal_joined(self, event):
         logger.info("principal relation joined: %s", event.relation)
-        # No data exchange in the scaffold
+        self._ensure_diagnostics()
 
     def _on_principal_changed(self, event):
         logger.info("principal relation changed: %s", event.relation)
 
     def _on_principal_broken(self, event):
         logger.info("principal relation broken: %s", event.relation)
-        # Ensure status reflects that relation was removed
         self.unit.status = MaintenanceStatus("principal relation removed")
 
-    # Dummy actions — they return minimal, safe results and write no files.
+    def _ensure_diagnostics(self):
+        diagnostics_raw = self.model.config.get("diagnostics", "")
+
+        if diagnostics_raw:
+            self._apply_diagnostics_config(diagnostics_raw)
+        else:
+            self._generate_diagnostics()
+
+    def _apply_diagnostics_config(self, diagnostics_raw):
+        try:
+            plan = json.loads(diagnostics_raw)
+        except json.JSONDecodeError as e:
+            logger.error("diagnostics config is not valid JSON: %s", e)
+            self.unit.status = BlockedStatus("invalid diagnostics config (not JSON)")
+            return
+
+        errors = validate_diagnostics(plan)
+        if errors:
+            logger.error("diagnostics config validation failed: %s", errors)
+            self.unit.status = BlockedStatus(f"invalid diagnostics config: {errors[0]}")
+            return
+
+        write_diagnostics_file(plan, self._diagnostics_path)
+        logger.info("diagnostics plan written to %s", self._diagnostics_path)
+        self.unit.status = ActiveStatus("diagnostics configured")
+
+    def _generate_diagnostics(self):
+        principal_name = self._get_principal_name()
+        if not principal_name:
+            logger.warning("no principal name available, skipping diagnostics generation")
+            self.unit.status = ActiveStatus("no principal to diagnose")
+            return
+
+        provider = self._get_ai_provider()
+        if provider is None:
+            logger.info("no AI provider configured, writing empty diagnostics plan")
+            plan = make_empty_plan(principal_name)
+            write_diagnostics_file(plan, self._diagnostics_path)
+            self.unit.status = ActiveStatus("empty diagnostics plan (no AI)")
+            return
+
+        logger.info("generating diagnostics plan for '%s' via %s", principal_name, self.model.config.get("provider"))
+        try:
+            prompt = build_prompt(principal_name)
+            response = provider.generate(prompt)
+            plan = json.loads(response)
+        except Exception as e:
+            logger.error("AI diagnostics generation failed: %s", e)
+            self.unit.status = BlockedStatus("diagnostics generation failed")
+            return
+
+        errors = validate_diagnostics(plan)
+        if errors:
+            logger.error("AI generated invalid diagnostics plan: %s", errors)
+            self.unit.status = BlockedStatus("AI generated invalid diagnostics")
+            return
+
+        write_diagnostics_file(plan, self._diagnostics_path)
+        logger.info("AI-generated diagnostics plan written to %s", self._diagnostics_path)
+        self.unit.status = ActiveStatus("diagnostics generated by AI")
+
+    def _get_principal_name(self):
+        try:
+            rels = self.model.relations.get("principal", [])
+            if rels:
+                return rels[0].app.name
+        except Exception:
+            pass
+        return None
+
+    def _get_ai_provider(self):
+        provider_name = self.model.config.get("provider", "none")
+        if provider_name == "none":
+            return None
+
+        api_token = self.model.config.get("api-token", "")
+        if not api_token:
+            logger.warning("provider '%s' configured but api-token is empty", provider_name)
+            return None
+
+        model = self.model.config.get("model", "") or self._default_model(provider_name)
+
+        if provider_name == "gemini":
+            from jaime.providers.gemini import GeminiProvider
+            return GeminiProvider(api_token, model)
+
+        logger.warning("unsupported provider: %s", provider_name)
+        return None
+
+    @staticmethod
+    def _default_model(provider_name):
+        mapping = {"gemini": "gemini-2.0-flash"}
+        return mapping.get(provider_name, "")
+
     def _on_action_diagnose(self, event):
         logger.info("diagnose action invoked")
         principal = None
@@ -76,7 +160,6 @@ class JaimeCharm(CharmBase):
             rels = self.model.relations.get("principal") or []
             if rels:
                 rel = rels[0]
-                # Best-effort principal unit name
                 principal = list(rel.units)[0].name if list(rel.units) else None
         except Exception:
             principal = None
@@ -94,12 +177,10 @@ class JaimeCharm(CharmBase):
 
     def _on_action_collect_context(self, event):
         logger.info("collect-context action invoked")
-        # Scaffold: no file I/O yet. Return a placeholder path.
         event.set_results({"context_path": "/var/lib/jaime/incidents/placeholder-context.json"})
 
     def _on_action_generate_report(self, event):
         logger.info("generate-report action invoked")
-        # Scaffold: no AI calls or filesystem writes. Return placeholder path.
         event.set_results({"report_path": "/var/log/jaime/reports/placeholder-report.md"})
 
 
