@@ -2,13 +2,13 @@
 
 ## 0. Phase 0 — Repository bootstrap
 
-- [ ] Create charm repository structure
-- [ ] Add README.md
-- [ ] Add AGENTS.md
-- [ ] Add architecture.md
-- [ ] Add tasks.md
-- [ ] Add .gitignore
-- [ ] Add initial license decision
+- [x] Create charm repository structure
+- [x] Add README.md
+- [x] Add AGENTS.md
+- [x] Add architecture.md
+- [x] Add tasks.md
+- [x] Add .gitignore
+- [x] Add initial license decision
 
 ## 1. Phase 1 — Observe-only MVP
 
@@ -38,7 +38,19 @@ Only logic for `observe` mode is added at this phase.
 - [x] [charm] Add `ai-report-enabled`, default `false` initially
 - [x] [charm] Add token/secret config only after non-AI observe path works
 
-### 1.3. Incident tracking
+### 1.3. Diagnostics plan generation
+
+- [x] [charm] Add `diagnostics` config variable to `config.yaml`
+- [x] [python] Define diagnostics JSON schema (`src/jaime/diagnostics.py`)
+- [x] [python] Add diagnostics validation against schema
+- [x] [python] Add AI prompt builder for diagnostics generation
+- [x] [python] Add diagnostics file persistence/reading (`/var/lib/jaime/diagnostics.json`)
+- [x] [python] Add Gemini provider using REST API (`src/jaime/providers/gemini.py`)
+- [x] [charm] On `principal-relation-joined`: if `diagnostics` config empty, generate via AI and write to file
+- [x] [charm] On `principal-relation-joined`: if `diagnostics` config non-empty, validate and write to file
+- [x] [charm] Create `src/jaime/` and `src/jaime/providers/` package structure
+
+### 1.4. Incident tracking
 
 - [ ] [python] Define incident model
 - [ ] [python] Create incident ID format
@@ -49,7 +61,7 @@ Only logic for `observe` mode is added at this phase.
 - [ ] [python] Close incident on recovery
 - [ ] [python] Add cooldown logic
 
-### 1.4. Principal status monitoring
+### 1.5. Principal status monitoring
 
 - [ ] [charm] Implement principal unit discovery
 - [ ] [python] Implement placeholder status reader
@@ -58,7 +70,7 @@ Only logic for `observe` mode is added at this phase.
 - [ ] [python] Detect recovery
 - [ ] [python] Avoid duplicate incident creation
 
-### 1.5. Context collection
+### 1.6. Context collection
 
 - [ ] [charm] Collect Juju goal-state/status context
 - [ ] [python] Collect recent Juju unit logs
@@ -71,7 +83,7 @@ Only logic for `observe` mode is added at this phase.
 - [ ] [python] Enforce `max-context-lines`
 - [ ] [python] Redact obvious secrets/tokens/passwords
 
-### 1.6. Structured logging
+### 1.7. Structured logging
 
 - [ ] [python] Create `/var/log/jaime/events.jsonl`
 - [ ] [python] Write `incident-start` event
@@ -81,7 +93,7 @@ Only logic for `observe` mode is added at this phase.
 - [ ] [python] Write `incident-recovered` event
 - [ ] [python] Include timestamp, incident ID, principal unit, status, reason, and paths
 
-### 1.7. Reports
+### 1.8. Reports
 
 - [ ] [python] Generate non-AI Markdown report
 - [ ] [python] Include timeline
@@ -91,7 +103,7 @@ Only logic for `observe` mode is added at this phase.
 - [ ] [python] Include suggested manual next steps
 - [ ] [python] Store reports under `/var/log/jaime/reports/`
 
-### 1.8. Actions
+### 1.9. Actions
 
 - [ ] [charm] `diagnose`: collect current context and return short result
 - [ ] [python] Add diagnose result builder
@@ -100,7 +112,7 @@ Only logic for `observe` mode is added at this phase.
 - [ ] [charm] Ensure actions work in observe mode
 - [ ] [charm] Ensure actions do not mutate principal workload
 
-### 1.9. Tests
+### 1.10. Tests
 
 - [ ] [test] Unit test incident creation
 - [ ] [test] Unit test timeout threshold
