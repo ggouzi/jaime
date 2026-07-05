@@ -220,3 +220,7 @@ __marimo__/
 # Ignore locally created charm build artifacts
 *.charm
 pkg/
+
+# Workflow
+.coding_sessions
+.coding_sessoins/*

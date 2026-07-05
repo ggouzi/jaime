@@ -357,3 +357,16 @@ Responsibilities:
 - action examples
 - troubleshooting notes
 - acceptance test docs
+
+## Agent Invocation
+
+When a request explicitly references an agent name:
+
+@project
+@charm
+@python
+@test
+@security
+@docs
+
+the responsibilities and rules of that agent should be applied to the task.
