@@ -114,6 +114,13 @@ Only logic for `observe` mode is added at this phase.
 
 ### 1.10. Tests
 
+- [x] [test] Set up pytest with test infrastructure (`pyproject.toml`, venv, tests/ structure)
+- [x] [test] Unit test `diagnostics.py` — `validate_diagnostics` (valid/invalid plans, schema edge cases)
+- [x] [test] Unit test `diagnostics.py` — `build_prompt`, `make_empty_plan`
+- [x] [test] Unit test `diagnostics.py` — `write_diagnostics_file`, `read_diagnostics_file` (round-trip, missing file, invalid JSON, directory creation)
+- [x] [test] Unit test `diagnostics.py` — `DIAGNOSTICS_SCHEMA` structure
+- [x] [test] Unit test `providers/base.py` — abstract class contract
+- [x] [test] Unit test `providers/gemini.py` — init, successful generation, error handling, empty responses
 - [ ] [test] Unit test incident creation
 - [ ] [test] Unit test timeout threshold
 - [ ] [test] Unit test cooldown behaviour
