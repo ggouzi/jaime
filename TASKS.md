@@ -18,7 +18,7 @@ Only logic for `observe` mode is added at this phase.
 ### 1.1. Charm skeleton
 
 - [x] [charm] Add `charmcraft.yaml`
-- [x] [charm] Add `metadata.yaml` for machine subordinate charm
+- ~~[ ] [charm] Add `metadata.yaml` for machine subordinate charm~~
 - [x] [charm] Add `config.yaml`
 - [x] [charm] Add `actions.yaml`
 - [x] [charm] Add `src/charm.py`
@@ -50,7 +50,16 @@ Only logic for `observe` mode is added at this phase.
 - [x] [charm] On `principal-relation-joined`: if `diagnostics` config non-empty, validate and write to file
 - [x] [charm] Create `src/jaime/` and `src/jaime/providers/` package structure
 
-### 1.4. Incident tracking
+### 1.4. Principal status monitoring
+
+- [ ] [charm] Implement principal unit discovery
+- [ ] [python] Implement placeholder status reader
+- [ ] [python] Implement real status reader using Juju context/hook tools where possible
+- [ ] [charm] Detect watched statuses
+- [ ] [python] Detect recovery
+- [ ] [python] Avoid duplicate incident creation
+
+### 1.5. Incident tracking
 
 - [ ] [python] Define incident model
 - [ ] [python] Create incident ID format
@@ -60,15 +69,6 @@ Only logic for `observe` mode is added at this phase.
 - [ ] [python] Record report generation state
 - [ ] [python] Close incident on recovery
 - [ ] [python] Add cooldown logic
-
-### 1.5. Principal status monitoring
-
-- [ ] [charm] Implement principal unit discovery
-- [ ] [python] Implement placeholder status reader
-- [ ] [python] Implement real status reader using Juju context/hook tools where possible
-- [ ] [charm] Detect watched statuses
-- [ ] [python] Detect recovery
-- [ ] [python] Avoid duplicate incident creation
 
 ### 1.6. Context collection
 

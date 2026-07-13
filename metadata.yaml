@@ -1,5 +1,0 @@
-subordinate: true
-requires:
-  principal:
-    interface: juju-info
-    scope: container

@@ -35,8 +35,6 @@ class JaimeCharm(CharmBase):
         self.framework.observe(self.on.collect_context_action, self._on_action_collect_context)
         self.framework.observe(self.on.generate_report_action, self._on_action_generate_report)
 
-        self.unit.status = MaintenanceStatus("initialising")
-
     def _on_update_status(self, event):
         try:
             relations = list(self.model.relations.get("principal", []))
@@ -105,6 +103,7 @@ class JaimeCharm(CharmBase):
             prompt = build_prompt(principal_name)
             response = provider.generate(prompt)
             plan = json.loads(response)
+            plan["generated_at"] = datetime.datetime.utcnow().isoformat() + "Z"
         except Exception as e:
             logger.error("AI diagnostics generation failed: %s", e)
             self.unit.status = BlockedStatus("diagnostics generation failed")

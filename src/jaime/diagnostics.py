@@ -193,6 +193,8 @@ def build_prompt(principal_name):
         "- Network ports the workload listens on\n"
         "- Health commands that can safely check the workload status\n"
         "\n"
+        "Use the actual current UTC date and time for the 'generated_at' field.\n"
+        "\n"
         "Respond with ONLY valid JSON matching the schema. "
         "Do not include markdown fences, explanations, or extra text. "
         "The response must be parseable as raw JSON."
