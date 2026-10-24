@@ -55,6 +55,39 @@ suggestion is cached on the incident and regenerated only when the
 whether the provider was called. The action fails when no incident is open, when
 the mode is `observe`, or when no suggestion is available.
 
+## `ask` (conversational)
+
+Append one question/answer turn to an incident's conversation. Each call adds a
+new turn; previous answers are never overwritten.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `question` | string | The question to ask about the incident (required). |
+| `incident-id` | string | Incident to ask about. Empty uses the current open incident. |
+
+```bash
+juju run jaime/0 ask incident-id=550e8400-e29b-41d4-a716-446655440000 \
+  question="What is the replication lag?"
+```
+
+Results: `incident-id`, `turn-id`, `description`, `commands`, `command-count`,
+`generated-at`, and usage when the provider reports it. The prompt carries the
+stored report plus the compact previous turns, so the model keeps the thread
+context. Requires `mode=suggest`; the action fails in `observe` mode. Nothing
+is executed. Turns are bounded by `max-suggestion-turns` per incident (oldest
+pruned).
+
+## `list-suggestions`
+
+Return the full conversation for an incident as a JSON array under `result`.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `incident-id` | string | Incident to list turns for. Empty lists every tracked incident's turns. |
+
+Each record carries `incident_id`, `unit`, `turn_id`, `question`,
+`generated_at`, and `description`.
+
 ## `generate-report`
 
 Generate and return a Markdown report for the current open incident. The file is

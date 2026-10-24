@@ -48,14 +48,43 @@ invent a URL or a procedure that is not in the report.
 
 Keep your response concise and focused on the incident.
 
-{additional_context_section}Incident report:
+{additional_context_section}
+{history_section}Incident report:
 ---
 {report}
 ---"""
 
 
+def build_history_section(history: list[dict] | None) -> str:
+    """Render the prior conversation turns as a compact Q/A section.
+
+    Each history entry is a dict with ``question`` and ``description``
+    (optionally ``id``). Absent or empty history returns an empty string, so
+    the template keeps a stable shape.
+    """
+    if not history:
+        return ""
+    lines = ["## Previous conversation", ""]
+    for i, turn in enumerate(history, start=1):
+        q = (turn.get("question") or "").strip()
+        a = (turn.get("description") or "").strip()
+        if not q and not a:
+            continue
+        if q:
+            lines.append(f"{i}. Q: {q}")
+        snippet = " ".join(a.split())[:400]
+        if snippet:
+            lines.append(f"   A: {snippet}")
+    lines.append("")
+    lines.append("Continue the conversation: answer the operator's latest "
+                 "question below, using the report and the prior turns as "
+                 "context. Do not repeat prior answers.")
+    return "\n".join(lines) + "\n\n"
+
+
 def build_suggest_prompt(report_content: str,
-                         additional_context: str = "") -> str:
+                         additional_context: str = "",
+                         history: list[dict] | None = None) -> str:
     """Build the prompt to send to the AI provider for suggest/act mode."""
     extra = ""
     if additional_context:
@@ -70,6 +99,7 @@ def build_suggest_prompt(report_content: str,
     return _SUGGEST_PROMPT_TEMPLATE.format(
         report=report_content,
         additional_context_section=extra,
+        history_section=build_history_section(history),
     )
 
 
@@ -113,15 +143,18 @@ def execute_command(command: str, timeout: int = 30) -> dict:
 
 
 def run_suggest(provider, report_content: str,
-                additional_context: str = "") -> Suggestion:
+                additional_context: str = "",
+                history: list[dict] | None = None) -> Suggestion:
     """Call the AI provider and return a Suggestion.
 
-    Raises if the provider call fails, so the caller can surface the error.
-    Returns None if provider is None.
+    ``history`` carries the prior conversation turns (dicts with ``question``
+    and ``description``) so the model sees the thread. Raises if the provider
+    call fails, so the caller can surface the error. Returns None if provider
+    is None.
     """
     if provider is None:
         return None
-    prompt = build_suggest_prompt(report_content, additional_context)
+    prompt = build_suggest_prompt(report_content, additional_context, history)
     llm_response, usage = provider.generate(prompt)
     logger.info("AI provider returned suggestion successfully")
     logger.debug("AI provider suggestion response:\n%s", llm_response)

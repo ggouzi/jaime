@@ -1,6 +1,7 @@
 """Unit tests for jaime.core (shared charm logic)."""
 
 import json
+import os
 import unittest.mock as mock
 
 from ops.charm import CharmBase
@@ -8,7 +9,7 @@ from ops.model import ActiveStatus, BlockedStatus
 from ops.testing import Harness
 
 from jaime.core import CoreMixin, Mode, Provider, summarise_usage
-from jaime.incident import Incident
+from jaime.incident import Incident, Suggestion
 from jaime.logging import list_incidents
 from jaime.principal import StatusTracker
 
@@ -568,3 +569,84 @@ class TestIncidentClosedAudit:
                   if _json.loads(line)["event"] == "incident-closed"]
         assert len(closed) == 1
         assert closed[0]["incident_id"] == inc.id
+
+
+class TestAskAction:
+    def _setup(self, tmp_path, config=None):
+        cfg = {"mode": "suggest", "report-dir": str(tmp_path),
+               "audit-log-path": str(tmp_path / "events.jsonl")}
+        if config:
+            cfg.update(config)
+        h = _make_harness(cfg)
+        inc = Incident.open("blocked")
+        h.charm._status_tracker._state["postgresql/0"] = {
+            "status": "blocked", "increment": 1, "incident": inc.to_dict(),
+        }
+        with open(os.path.join(str(tmp_path), f"{inc.id}.md"), "w") as f:
+            f.write("# Incident Report\n")
+        return h, inc
+
+    def _event(self, **params):
+        ev = mock.MagicMock()
+        ev.params.get.side_effect = lambda k, d=None: params.get(k, d)
+        return ev
+
+    def test_ask_requires_question(self, tmp_path):
+        h, inc = self._setup(tmp_path)
+        ev = self._event()
+        h.charm._on_action_ask(ev)
+        assert "question is required" in ev.fail.call_args[0][0]
+
+    def test_ask_requires_suggest_mode(self, tmp_path):
+        h, inc = self._setup(tmp_path, {"mode": "observe"})
+        ev = self._event(question="why?")
+        h.charm._on_action_ask(ev)
+        assert "requires mode=suggest" in ev.fail.call_args[0][0]
+
+    def test_ask_appends_turn_and_never_overwrites(self, tmp_path):
+        h, inc = self._setup(tmp_path)
+        with mock.patch.object(h.charm, "_run_mode_logic",
+                               return_value=Suggestion.from_llm("because X", ["juju config a=b"])):
+            ev = self._event(incident_id=inc.id, question="why blocked?")
+            h.charm._on_action_ask(ev)
+        results = ev.set_results.call_args[0][0]
+        assert results["incident-id"] == inc.id
+        assert results["turn-id"]
+        assert "because X" in results["description"]
+
+        with mock.patch.object(h.charm, "_run_mode_logic",
+                               return_value=Suggestion.from_llm("second answer", ["cmd2"])):
+            ev2 = self._event(incident_id=inc.id, question="and then?")
+            h.charm._on_action_ask(ev2)
+        turns = h.charm._status_tracker._state["postgresql/0"]["incident"]["turns"]
+        assert [t["description"] for t in turns] == ["because X", "second answer"]
+        assert turns[0]["question"] == "why blocked?"
+        assert turns[1]["question"] == "and then?"
+
+    def test_ask_passes_history_to_mode_logic(self, tmp_path):
+        h, inc = self._setup(tmp_path)
+        h.charm._status_tracker._state["postgresql/0"]["incident"] = (
+            Incident.from_dict(h.charm._status_tracker._state["postgresql/0"]["incident"])
+            .attach_suggestion(Suggestion.from_llm("prior answer", []))
+            .to_dict()
+        )
+        with mock.patch.object(h.charm, "_run_mode_logic") as m:
+            m.return_value = Suggestion.from_llm("now", [])
+            self._event(incident_id=inc.id, question="next?")
+            h.charm._on_action_ask(self._event(incident_id=inc.id, question="next?"))
+            _, kwargs = m.call_args
+            assert kwargs.get("history") and kwargs["history"][0]["description"] == "prior answer"
+            assert kwargs["additional_context"] == "next?"
+
+    def test_list_suggestions_returns_turns(self, tmp_path):
+        h, inc = self._setup(tmp_path)
+        inc_obj = Incident.from_dict(h.charm._status_tracker._state["postgresql/0"]["incident"])
+        inc_obj = (inc_obj.attach_suggestion(Suggestion.from_llm("a", []))
+                          .attach_suggestion(Suggestion.from_llm("b", [])))
+        h.charm._status_tracker.update_incident("postgresql/0", inc_obj.to_dict())
+        ev = self._event(incident_id=inc.id)
+        h.charm._on_action_list_suggestions(ev)
+        records = json.loads(ev.set_results.call_args[0][0]["result"])
+        assert len(records) == 2
+        assert records[0]["question"] == ""
+        assert records[1]["description"] == "b"

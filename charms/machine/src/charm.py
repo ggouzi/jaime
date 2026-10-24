@@ -52,10 +52,11 @@ class JaimeCharm(CoreMixin, CharmBase):
         self.framework.observe(self.on.principal_relation_joined, self._on_principal_joined)
         self.framework.observe(self.on.principal_relation_broken, self._on_principal_broken)
 
-        self.framework.observe(self.on.diagnose_action, self._on_action_diagnose)
         self.framework.observe(self.on.collect_context_action, self._on_action_collect_context)
         self.framework.observe(self.on.generate_report_action, self._on_action_generate_report)
         self.framework.observe(self.on.get_suggestion_action, self._on_action_get_suggestion)
+        self.framework.observe(self.on.ask_action, self._on_action_ask)
+        self.framework.observe(self.on.list_suggestions_action, self._on_action_list_suggestions)
         self.framework.observe(self.on.show_status_action, self._on_action_show_status)
         self.framework.observe(self.on.show_usage_action, self._on_action_show_usage)
         self.framework.observe(self.on.list_incidents_action, self._on_action_list_incidents)
@@ -550,25 +551,6 @@ class JaimeCharm(CoreMixin, CharmBase):
     # ------------------------------------------------------------------
     # Actions (machine-specific)
     # ------------------------------------------------------------------
-
-    def _on_action_diagnose(self, event):
-        logger.info("diagnose action invoked")
-        principal = None
-        try:
-            rels = self.model.relations.get("principal") or []
-            if rels:
-                rel = rels[0]
-                principal = list(rel.units)[0].name if list(rel.units) else None
-        except Exception:
-            principal = None
-
-        result = {
-            "principal-unit": principal or "unknown",
-            "jaime-unit": self.unit.name,
-            "jaime-mode": self.model.config.get("mode"),
-            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        }
-        event.set_results(result)
 
     def _principal_unit_name(self):
         """Name of the first related principal unit, or None."""

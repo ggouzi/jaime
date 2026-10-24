@@ -13,6 +13,7 @@ the substrate-agnostic pure library.
 """
 
 import datetime
+import dataclasses
 import hashlib
 import json
 import logging
@@ -22,7 +23,7 @@ from enum import Enum
 
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 
-from jaime.incident import Incident, Suggestion
+from jaime.incident import Incident, Suggestion, Turn
 from jaime.logging import list_incidents, rotate_audit_log, write_event
 from jaime.report import generate_report
 from jaime.suggest import run_act, run_suggest
@@ -192,6 +193,13 @@ class CoreMixin:
             if s.strip()
         }
 
+    def _max_turns(self) -> int:
+        """Per-incident conversation depth (`max-suggestion-turns`)."""
+        try:
+            return max(1, int(self.model.config.get("max-suggestion-turns", 20)))
+        except (TypeError, ValueError):
+            return 20
+
     # ------------------------------------------------------------------
     # AI provider
     # ------------------------------------------------------------------
@@ -268,8 +276,13 @@ class CoreMixin:
     # ------------------------------------------------------------------
 
     def _run_mode_logic(self, report_content: str,
-                        additional_context: str = "") -> Suggestion | None:
-        """Run suggest or act logic based on the configured mode."""
+                        additional_context: str = "",
+                        history: list[dict] | None = None) -> Suggestion | None:
+        """Run suggest or act logic based on the configured mode.
+
+        ``history`` carries the prior conversation turns so ``ask`` gives the
+        model the thread context; it is ignored in act mode.
+        """
         try:
             mode = Mode(self.model.config.get("mode", Mode.OBSERVE))
         except ValueError:
@@ -294,7 +307,7 @@ class CoreMixin:
 
         try:
             if mode == Mode.SUGGEST:
-                return run_suggest(provider, report_content, additional_context)
+                return run_suggest(provider, report_content, additional_context, history)
 
             suggestion, act_results = run_act(provider, report_content, additional_context)
             for result in act_results:
@@ -315,8 +328,22 @@ class CoreMixin:
 
     def _store_suggestion(self, unit_name: str, incident_dict: dict,
                           suggestion: Suggestion) -> Suggestion:
-        """Attach a suggestion to the incident, persist it, and record token usage."""
-        updated = Incident.from_dict(incident_dict).attach_suggestion(suggestion)
+        """Append a suggestion as a turn (legacy one-shot), persist, audit."""
+        turn = Turn.from_suggestion(suggestion)
+        self._store_turn(unit_name, incident_dict, turn)
+        return suggestion
+
+    def _store_turn(self, unit_name: str, incident_dict: dict,
+                    turn: Turn, history_count: int = 0) -> Turn:
+        """Append a conversational turn to the incident, prune, persist, audit.
+
+        The turn's id is set to the incident's next per-incident integer,
+        overriding any placeholder, so ids read "1, 2, 3 ..." and never repeat.
+        Returns the persisted turn (with the assigned id).
+        """
+        inc = Incident.from_dict(incident_dict)
+        turn = dataclasses.replace(turn, id=inc.next_turn_id)
+        updated = inc.append_turn(turn).prune_turns(self._max_turns())
         self._status_tracker.update_incident(unit_name, updated.to_dict())
 
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -326,21 +353,25 @@ class CoreMixin:
             "event": "suggestion-generated",
             "unit": unit_name,
             "incident_id": incident_dict["id"],
-            "commands": list(suggestion.commands),
+            "turn_id": turn.id,
+            "question": turn.question,
+            "history_turns": history_count,
+            "commands": list(turn.commands),
             "mode": self.model.config.get("mode", Mode.OBSERVE.value),
             "timestamp": now,
         }
-        if suggestion.usage is not None:
-            audit_event["usage"] = suggestion.usage.to_dict()
+        if turn.usage is not None:
+            audit_event["usage"] = turn.usage.to_dict()
         write_event(audit_event, audit_path)
 
-        if suggestion.usage is not None:
-            usage_entry = suggestion.usage.to_dict()
+        if turn.usage is not None:
+            usage_entry = turn.usage.to_dict()
             usage_entry["incident_id"] = incident_dict["id"]
+            usage_entry["turn_id"] = turn.id
             usage_entry["timestamp"] = now
             self._status_tracker.record_usage(unit_name, usage_entry)
 
-        return suggestion
+        return turn
 
     # ------------------------------------------------------------------
     # Incident lifecycle (shared state machine)
@@ -603,7 +634,8 @@ class CoreMixin:
         for unit_name, entry in self._status_tracker._state.items():
             inc = entry.get("incident")
             if inc and inc.get("closed_at") is None:
-                suggestion = inc.get("suggestion")
+                turns = inc.get("turns") or []
+                suggestion = turns[-1] if turns else inc.get("suggestion")
                 if suggestion:
                     stored_hash = suggestion.get("context_hash", "")
                     stored_model = (suggestion.get("usage") or {}).get("model", "")
@@ -611,9 +643,10 @@ class CoreMixin:
                     if not model_changed and (not additional_context or context_hash == stored_hash):
                         event.set_results({
                             "incident-id": inc["id"],
+                            "turn-id": turns[-1].get("id", "") if turns else "",
                             "description": suggestion["description"],
-                            "commands": "\n".join(suggestion["commands"]),
-                            "command-count": len(suggestion["commands"]),
+                            "commands": "\n".join(suggestion.get("commands") or []),
+                            "command-count": len(suggestion.get("commands") or []),
                             "generated-at": suggestion["generated_at"],
                             "cached": "true",
                         })
@@ -664,6 +697,91 @@ class CoreMixin:
                 return
 
         event.fail("no open incident found")
+
+    def _on_action_ask(self, event):
+        """Append one conversational turn to an incident (never overwrites)."""
+        question = (event.params.get("question") or "").strip()
+        if not question:
+            event.fail("question is required")
+            return
+        incident_id = (event.params.get("incident-id") or "").strip()
+
+        mode = Mode(self.model.config.get("mode", Mode.OBSERVE))
+        if mode != Mode.SUGGEST:
+            event.fail(f"ask requires mode=suggest (current mode is '{mode.value}')")
+            return
+
+        for unit_name, entry in self._status_tracker._state.items():
+            inc = entry.get("incident")
+            if not inc or inc.get("closed_at") is not None:
+                continue
+            if incident_id and inc["id"] != incident_id:
+                continue
+
+            report_dir = self.model.config.get("report-dir", "") or "/var/log/jaime/reports"
+            report_path = os.path.join(report_dir, f'{inc["id"]}.md')
+            if not os.path.exists(report_path):
+                event.fail(f"report file not found at {report_path}")
+                return
+            with open(report_path) as f:
+                report_content = f.read()
+
+            turns = inc.get("turns") or []
+            history = [
+                {"id": t.get("id", ""), "question": t.get("question", ""),
+                 "description": t.get("description", "")}
+                for t in turns
+            ]
+
+            suggestion = self._run_mode_logic(
+                report_content, additional_context=question, history=history
+            )
+            if suggestion is None:
+                event.fail("could not generate a suggestion for the question")
+                return
+
+            turn = Turn.from_suggestion(suggestion, question=question)
+            turn = self._store_turn(unit_name, inc, turn, history_count=len(history))
+            results = {
+                "incident-id": inc["id"],
+                "turn-id": turn.id,
+                "description": turn.description,
+                "commands": "\n".join(turn.commands),
+                "command-count": len(turn.commands),
+                "generated-at": turn.generated_at,
+            }
+            if turn.usage is not None:
+                results["model"] = turn.usage.model
+                results["prompt-tokens"] = str(turn.usage.prompt_tokens)
+                results["completion-tokens"] = str(turn.usage.completion_tokens)
+                results["total-tokens"] = str(turn.usage.total_tokens)
+                if turn.usage.cost_usd is not None:
+                    results["cost-usd"] = f"{turn.usage.cost_usd:.6f}"
+            event.set_results(results)
+            return
+
+        event.fail("no matching incident found")
+
+    def _on_action_list_suggestions(self, event):
+        """Return the conversation for an incident as a JSON array."""
+        incident_id = (event.params.get("incident-id") or "").strip()
+        records = []
+        for unit_name, entry in self._status_tracker._state.items():
+            inc = entry.get("incident")
+            if not inc:
+                continue
+            if incident_id and inc["id"] != incident_id:
+                continue
+            for turn in inc.get("turns") or []:
+                records.append({
+                    "incident_id": inc["id"],
+                    "unit": unit_name,
+                    "turn_id": turn.get("id", ""),
+                    "question": turn.get("question", ""),
+                    "generated_at": turn.get("generated_at", ""),
+                    "description": turn.get("description", ""),
+                })
+        event.set_results({"result": json.dumps(records)})
 
     def _on_action_generate_report(self, event):
         for unit_name, entry in self._status_tracker._state.items():

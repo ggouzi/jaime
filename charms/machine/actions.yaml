@@ -1,6 +1,3 @@
-diagnose:
-  description: "Collect basic information about the related principal charm (read-only)."
-  params: {}
 collect-context:
   description: "Write a bounded context bundle to disk and return its path."
   params: {}
@@ -14,6 +11,27 @@ get-suggestion:
       type: string
       default: ""
       description: "Extra context to include in the AI prompt (e.g. juju config, replication status)."
+ask:
+  description: "Append one conversational question to the current (or a given) incident and return a new AI answer as a turn. Never overwrites previous answers."
+  params:
+    incident-id:
+      type: string
+      default: ""
+      description: "Incident ID to ask about. Empty uses the current open incident."
+    question:
+      type: string
+      description: "The question to ask about the incident (required)."
+list-suggestions:
+  description: "Return the full conversation (all turns) for an incident as a JSON array under 'result'."
+  params:
+    incident-id:
+      type: string
+      default: ""
+      description: "Incident ID to list turns for. Empty lists every tracked incident's turns."
+  results:
+    result:
+      type: string
+      description: "JSON array of turns: incident_id, unit, turn_id, question, generated_at, description."
 show-status:
   description: "Show the current monitoring state for every monitored unit: workload, active incident if any, and last observation. Returns a JSON array under 'result'."
   params: {}

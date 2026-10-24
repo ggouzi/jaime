@@ -8,6 +8,7 @@
 - Add the monitored application's charm details to the incident report header - charm name, channel (track/risk), revision, origin, base and workload version - read from the Juju controller `FullStatus`. The k8s charm always includes them; the machine charm does when controller credentials are configured, and omits them otherwise
 - Add an always-on snap inventory (`snap list`) and a bounded journalctl sample - errors/warnings only, for the relevant units (plan-listed, failed, and snap service units), limited to the incident time window - to machine incident reports
 - Render machine report logs as a compact timeline - full `YYYY-MM-DD HH:MM:SS` stamps, consecutive identical messages collapsed to a `×N` count - for `## Recent unit logs` and `## Journal`, and digest the broad network-port fallback to `local-address:port owner`
+- Add a conversational mode: `ask` appends one question/answer turn to an incident (never overwrites) and `list-suggestions` prints the conversation, with the prompt carrying the prior turns and the list bounded by `max-suggestion-turns`
 
 ### Bug fixes
 

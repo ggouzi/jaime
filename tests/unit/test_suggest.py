@@ -147,3 +147,28 @@ class TestRunAct:
         suggestion, results = run_act(None, "report")
         assert suggestion is None
         assert results == []
+
+
+class TestHistorySection:
+    def test_empty_history_returns_empty(self):
+        from jaime.suggest import build_history_section
+        assert build_history_section(None) == ""
+        assert build_history_section([]) == ""
+
+    def test_renders_questions_and_answers(self):
+        from jaime.suggest import build_history_section
+        section = build_history_section([
+            {"question": "what is it?", "description": "Postgres is down."},
+        ])
+        assert "what is it?" in section
+        assert "Postgres is down." in section
+
+    def test_prompt_includes_history_before_report(self):
+        from jaime.suggest import build_suggest_prompt
+        prompt = build_suggest_prompt(
+            "REPORT", additional_context="why now?", history=[{"question": "earlier?", "description": "earlier answer"}]
+        )
+        assert "earlier?" in prompt
+        assert "why now?" in prompt
+        assert "REPORT" in prompt
+        assert prompt.index("earlier?") < prompt.index("REPORT")

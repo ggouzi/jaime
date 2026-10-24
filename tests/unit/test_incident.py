@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-from jaime.incident import Incident, Suggestion, UsageMetadata
+from jaime.incident import Incident, Suggestion, Turn, UsageMetadata
 
 
 class TestIncidentOpen:
@@ -218,3 +218,48 @@ class TestUsageMetadata:
         assert s.usage is None
         restored = Suggestion.from_dict(s.to_dict())
         assert restored.usage is None
+
+
+class TestTurns:
+    def test_attach_appends_turn_and_preserves_history(self):
+        inc = Incident.open("blocked")
+        t1 = Suggestion.from_llm("first", ["cmd1"])
+        t2 = Suggestion.from_llm("second", ["cmd2"])
+        inc = inc.attach_suggestion(t1).attach_suggestion(t2)
+        assert len(inc.turns) == 2
+        assert inc.turns[0].description == "first"
+        assert inc.turns[1].description == "second"
+        # Legacy single-shot view reflects the latest turn.
+        assert inc.suggestion.description == "second"
+        assert inc.suggestion.commands == ("cmd2",)
+
+    def test_roundtrip_preserves_turns(self):
+        inc = Incident.open("blocked")
+        inc = inc.attach_suggestion(Suggestion.from_llm("a", ["x"]))
+        restored = Incident.from_dict(inc.to_dict())
+        assert len(restored.turns) == 1
+        assert restored.suggestion.description == "a"
+
+    def test_legacy_suggestion_migrates_to_one_turn(self):
+        old = {
+            "id": "abc", "opened_at": "2026-01-01T00:00:00+00:00",
+            "suggestion": {"description": "legacy", "commands": ["y"], "generated_at": "2026-01-01T00:00:01+00:00"},
+        }
+        restored = Incident.from_dict(old)
+        assert len(restored.turns) == 1
+        assert restored.turns[0].question == ""
+        assert restored.turns[0].description == "legacy"
+
+    def test_prune_keeps_newest(self):
+        inc = Incident.open("blocked")
+        for i in range(5):
+            inc = inc.attach_suggestion(Suggestion.from_llm(f"turn-{i}", [f"cmd-{i}"]))
+        pruned = inc.prune_turns(2)
+        assert [t.description for t in pruned.turns] == ["turn-3", "turn-4"]
+
+    def test_turn_from_suggestion_carries_question(self):
+        t = Turn.from_suggestion(Suggestion.from_llm("d", ["c"]), question="why?")
+        assert t.question == "why?"
+        d = t.to_dict()
+        assert d["question"] == "why?"
+        assert Turn.from_dict(d).question == "why?"

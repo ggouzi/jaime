@@ -660,11 +660,49 @@ logs, reports, or prompts.
 
 ### Usage accounting
 
-Every LLM call records `UsageMetadata` — model, prompt/completion/total tokens,
+Every LLM call records `UsageMetadata` - model, prompt/completion/total tokens,
 and cost when the provider reports it. Entries are appended to a per-unit
 `usage_log` in the state file, preserved across incident episodes, and never
 cleared by a new episode. The `show-usage` action aggregates them into a global
 summary with a per-model breakdown, or filters to a single incident.
+
+### Conversational suggestions
+
+Today an incident holds one `Suggestion`, and regeneration replaces it. The
+conversational mode makes the diagnosis a dialogue: the operator (or an
+external chat bot) asks questions against a stable `incident_id` and gets one
+answer per turn, all retained.
+
+- **State.** An incident carries a bounded append-only list of turns, not one
+  suggestion. Each turn records an `id`, the `question`, the `answer`, parsed
+  `commands`, `generated_at`, the `context_hash` (bound to the turn's inputs)
+  and `usage`. The list is capped at `max-suggestion-turns` (default 20 per
+  incident); the oldest turns are pruned at the cap. Existing incidents without
+  a list read as empty. `get-suggestion` keeps its one-shot contract and returns
+  the latest turn.
+- **Actions.** `ask` (both charms) takes `incident-id`
+  (optional; defaults to the current open incident) and `question` (required),
+  appends a turn and never overwrites, and returns the turn id, incident id,
+  answer, commands and usage. `list-suggestions` returns the conversation for
+  an incident. Turn answers are produced only in `suggest` mode; `observe`
+  rejects. Nothing is executed: `act` stays gated, so turns are advisory text.
+- **Multi-turn context.** The `ask` prompt is the stored report plus a compact
+  history of previous Q/A turns (bounded) plus the current question, so the
+  model sees the thread. Each turn's prompt projection and usage are recorded
+  in the audit log (`suggestion-generated` with the turn id), so the
+  conversation is reproducible.
+
+Delivery is handled by external chat bots (knowbot, Mattermost, Harvest): a bot
+maps a channel thread to an `incident_id` and calls the `ask` action once per
+user turn, reading the answer from the action result. No long-lived daemon or
+open port is needed.
+
+Design decisions: conversational turns are append-only so the history is
+auditable; bounding turns limits both state size and prompt cost. Rejected:
+keeping a single mutable suggestion (loses the thread); an unbounded turn
+list; an in-charm HTTP listener (a daemon and an open port for no benefit when
+a juju-capable bot can run the `ask` action); a chat UI rendered by Jaime
+itself (the bots render).
 
 ## Data flow
 
@@ -787,6 +825,7 @@ provider: none                 # none | gemini | openrouter | remote
 model: ""                      # defaults to gemini-2.5-flash / ~deepseek/deepseek-v4-flash-latest; remote has no default
 api-token: ""                  # secret:<id> or plain string; optional for remote
 provider-remote-url: ""        # remote only: OpenAI-compatible /v1 root, required when provider=remote; blocks with gemini/openrouter
+max-suggestion-turns: 20       # per-incident conversation depth (oldest pruned)
 watch-statuses: error,blocked
 failure-timeout-minutes: 5
 cooldown-minutes: 30

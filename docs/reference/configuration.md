@@ -25,6 +25,7 @@ files.
 | `max-context-lines` | int | `500` | Per-item cap on collected lines, tightened per section. Not a report or prompt total. |
 | `report-dir` | string | `/var/log/jaime/reports` | Directory where Markdown reports are written. |
 | `audit-log-path` | string | `/var/log/jaime/events.jsonl` | Path to the structured JSONL audit log. |
+| `max-suggestion-turns` | int | `20` | Per-incident conversation depth; oldest turns pruned at the cap. |
 | `diagnostics` | string | empty | Substrate-specific JSON diagnostics plan. |
 | `watch-applications` | string | empty | Applications to monitor in addition to the machine charm's principal. |
 | `juju-api-user` | string | empty | Juju user with `read` on the model, used for the controller API. |

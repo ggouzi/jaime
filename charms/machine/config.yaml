@@ -75,6 +75,10 @@ options:
     type: string
     description: "Path to the structured JSONL audit log."
     default: /var/log/jaime/events.jsonl
+  max-suggestion-turns:
+    type: int
+    description: "Maximum conversation depth retained per incident. Newer question/answer turns are kept; the oldest are pruned at the cap."
+    default: 20
   diagnostics:
     type: string
     description: >
